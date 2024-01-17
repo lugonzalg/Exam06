@@ -17,14 +17,47 @@ Lógica de sockets para la comunicación Cliente <----> Servidor
 	* Inicializar los fd_socket
 		* master
 		* read_fds
+```c
+
+	fd_set master, read_fds;
+
+	FD_ZERO(&master);
+	FD_ZERO(&read_fds);
+
+```
+
 	* socket
 	* bind
 	* listen
 
+```c
+
+	int listener;
+
+	listen(listener, 10);
+	FD_SET(listener, &master);
+	fdmax = listener;
+
+```
+
 2. Gestionar servidor y clientes
 
 	* Copiar en read_fds, master
+
+```c
+
+	read_fds = master;
+
+```
+
 	* Hacer select de read_fds
+```c
+
+	int retval;
+
+	retval = select(maxfd, &read_fds, NULL, ...)
+
+```
 	* Iterar sobre read_fds desde 0 hasta maxfd y comprobar si el fd está presente
 	* Si el fd está presente:
 
