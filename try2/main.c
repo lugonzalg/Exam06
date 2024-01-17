@@ -66,6 +66,8 @@ static t_client *create_node(int fd) {
 	node->fd = fd;
 	node->next = NULL;
 	node->prev = NULL;
+
+	id += 1;
 	return node;
 }
 
@@ -93,6 +95,9 @@ static void delete_client(int fd, t_exam *exam) {
 	if (exam->head->fd == fd) {
 
 		tmp = exam->head;
+		if (exam->tail->prev == tmp)
+			exam->tail->prev = NULL;
+
 		exam->head = exam->head->next;
 		free(tmp);
 		return ;
@@ -102,6 +107,9 @@ static void delete_client(int fd, t_exam *exam) {
 	if (exam->tail->fd == fd) {
 
 		tmp = exam->tail;
+		if (exam->head->next == exam->tail)
+			exam->head->next = NULL;
+
 		exam->tail = exam->tail->prev;
 		free(tmp);
 		return ;
@@ -113,6 +121,7 @@ static void delete_client(int fd, t_exam *exam) {
 
 		if (tmp->fd == fd) {
 
+			printf("node deleted\n");
 			tmp->prev->next = tmp->next;
 			tmp->next->prev = tmp->prev;
 			free(tmp);
@@ -123,15 +132,16 @@ static void delete_client(int fd, t_exam *exam) {
 
 }
 
-static void broadcast(int fd, t_exam *exam) {
+static void broadcast(int fd, t_exam *exam, char buffer[RAW_SIZE], int size) {
 
 	t_client *tmp;
+	int retval;
 
 	tmp = exam->head;
 	for (; tmp != NULL; tmp = tmp->next) {
 
 		if (fd != tmp->fd)
-			;
+			retval = send(tmp->fd, buffer, size, 0);
 	}
 
 }
@@ -141,7 +151,7 @@ static void welcome_client(t_client *client) {
 	char buffer[1000];
 	int  retval;
 
-	retval = sprintf(buffer, "client(%d): Welcome!", client->id);
+	retval = sprintf(buffer, "client(%d): Welcome!\n", client->id);
 	buffer[retval] = 0;
 
 	retval = send(client->fd, buffer, strlen(buffer), 0);
@@ -149,8 +159,7 @@ static void welcome_client(t_client *client) {
 
 int main(int argc, char *argv[]) {
 
-	t_client			*head;
-	t_client			*tail;
+	//struct timeval 		ts;
 	t_exam				exam;
 	struct sockaddr_in 	address;
 	int					retval;
@@ -170,7 +179,7 @@ int main(int argc, char *argv[]) {
 	if (exam.serverfd < 0)
 		send_error(FATAL_ERROR, 2);
 
-	exam.maxfd = exam.serverfd + 1;
+	exam.maxfd = exam.serverfd;
 	FD_SET(exam.serverfd, &exam.master);
 	address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
@@ -183,11 +192,14 @@ int main(int argc, char *argv[]) {
 		send_error(FATAL_ERROR, 4);
 
 	/*PARTE DEL EXAMEN A DESARROLLAR */
+	//ts.tv_sec = 0;
+	//ts.tv_usec = 5000;
+
 	while (1) {
 		exam.reads = exam.master;
-		select(exam.maxfd, &exam.reads, NULL, NULL, NULL);
+		select(exam.maxfd + 1, &exam.reads, NULL, NULL, NULL);//&ts);
 
-		for (size_t fd = 0; fd < exam.maxfd; fd++) {
+		for (int fd = 0; fd <= exam.maxfd; fd++) {
 
 			if (FD_ISSET(fd, &exam.reads)) {
 
@@ -195,7 +207,12 @@ int main(int argc, char *argv[]) {
 
 					exam.newfd = accept(exam.serverfd, (struct sockaddr *)&address, (socklen_t*)&address);
 					if (exam.newfd != -1) {
+
 						FD_SET(exam.newfd, &exam.master);
+
+						if (exam.maxfd < exam.newfd)
+							exam.maxfd = exam.newfd;
+
 						exam.node = create_node(exam.newfd);
 						add_client(&exam);
 						welcome_client(exam.node);
@@ -204,13 +221,15 @@ int main(int argc, char *argv[]) {
 				} else {
 
 					retval = recv(fd, exam.raw, RAW_SIZE, 0);
+					printf("recv: %d\n", retval);
+
 					if (retval <= 0) {
 						delete_client(fd, &exam);
 						FD_CLR(fd, &exam.master);
 						continue ;
 					}
 
-					broadcast(fd, &exam);
+					broadcast(fd, &exam, exam.raw, retval);
 				}
 
 			}
